@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 
 namespace MyLearning
 {
+    #pragma warning disable CS1591
+
     public class Program
     {
         public static void Main(string[] args)
@@ -23,4 +25,6 @@ namespace MyLearning
                     webBuilder.UseStartup<Startup>();
                 });
     }
+
+    #pragma warning restore CS1591
 }
