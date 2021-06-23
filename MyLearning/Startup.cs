@@ -16,6 +16,12 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
 using System.IO;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
+using Microsoft.IdentityModel.Tokens;
+using MyLearning.Utils;
+using Newtonsoft.Json;
 
 namespace MyLearning
 {
@@ -48,12 +54,17 @@ namespace MyLearning
                 {
                     opt.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
                 });
+            
+            // configure strongly typed settings
+            var appSettingsSection = Configuration.GetSection("AppSettings");
+            services.Configure<AppSettings>(appSettingsSection);
 
             services.AddDbContext<MyLearningDbContext>(options =>
                     options.UseSqlServer(Configuration.GetConnectionString("MyLearningDbContext")));
 
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IProductRepository, ProductRepository>();
+            services.AddScoped<IAuthRepository, AuthRepository>();
 
             // configures services for multipartbodylength
             services.Configure<FormOptions>(o =>
@@ -85,6 +96,80 @@ namespace MyLearning
             });
 
 
+            // get appsettings instance
+            var appSettings = appSettingsSection.Get<AppSettings>();
+            // get secret key
+            var secretKey = Encoding.UTF8.GetBytes(appSettings.SecretKey);
+            
+            // configure authentication
+            services.AddAuthentication(option =>
+            {
+                option.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                option.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                
+            }).AddJwtBearer(options => {
+
+                options.SaveToken = true;
+                options.RequireHttpsMetadata = false;
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = context =>
+                    {
+                        // TODO:: Validate user by token
+                        var userRepo = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+                        var userId = int.Parse(context.Principal.Identity.Name);
+                        var user = userRepo.GetUser(userId);
+
+                        if ( user == null )
+                        {
+                            context.Fail(new Exception("Unauthorized"));
+                        }
+                        return Task.CompletedTask;
+                    },
+                    OnAuthenticationFailed = context =>
+                    {
+                        var message = "";
+                        if (context.Exception is SecurityTokenValidationException)
+                        {
+                            message = "Invalid token";
+
+                        } else if (context.Exception is  SecurityTokenInvalidIssuerException)
+                        {
+                            message = "Invalid Issuer";
+                        } else if ( context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+                        {
+                            message = "Token Expired";
+                        } else if (context.Exception is SecurityTokenInvalidAudienceException)
+                        {
+                            message = "Invalid Audience";
+                        }
+
+                        context.Response.WriteAsync(JsonConvert.SerializeObject(
+                            new { 
+                               Status = false,
+                               Message = message,
+                               Data = new {}
+                            }, Formatting.Indented));
+
+                        return Task.FromResult<object>(0);
+
+                    }
+                    
+                };
+                options.TokenValidationParameters = new TokenValidationParameters
+                { 
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = false,
+                    ValidateIssuerSigningKey = true,
+                    // ValidIssuer = Configuration["AppSettings:Issuer"], // commented because ValidateIssuer is false
+                    // ValidAudience = Configuration["AppSettings:Issuer"], // commented because ValidateAudience is false
+                    IssuerSigningKey = new SymmetricSecurityKey(secretKey),
+                    // set clockskew to zero so tokens expire exactly at specified time
+                    ClockSkew = TimeSpan.Zero
+                };
+            });
+            
             // Register the Swagger generator, defining 1 or more Swagger documents
             services.AddSwaggerGen(c => {
                 c.SwaggerDoc("v1", new OpenApiInfo
@@ -159,6 +244,8 @@ namespace MyLearning
 
             app.UseHttpsRedirection();
 
+            app.UseMiddleware<ErrorHandlerMiddleware>();
+            
             app.UseAuthentication();
 
             app.UseRouting();

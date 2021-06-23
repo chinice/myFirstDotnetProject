@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using MyLearning.Dtos;
 using MyLearning.Services;
+using MyLearning.Utils;
 
 namespace MyLearning.Controllers
 {
@@ -14,6 +17,7 @@ namespace MyLearning.Controllers
     [ApiController]
     [Produces("application/json")]
     [EnableCors("AllowOrigin")]
+    [Microsoft.AspNetCore.Authorization.Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class UserController : ControllerBase
     {
         private readonly IUserRepository _userRepository;
@@ -28,6 +32,7 @@ namespace MyLearning.Controllers
         /// </summary>
         /// <returns>Users retrieved successfully</returns>
         /// <returns code="200">Users retrieved successfully</returns>
+        [AllowAnonymous]
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ResponseMessage))]
         public async Task<IActionResult> Get()
@@ -113,10 +118,13 @@ namespace MyLearning.Controllers
                 });
             }
 
+            //Hash password
+            string password = HashUtil.HashString(userCreateDto.Password, "SHA1");
+            
             var user = await _userRepository.AddUser(new Models.User
             {
                 UserName = userCreateDto.UserName,
-                Password = userCreateDto.UserName,
+                Password = password,
                 Name = userCreateDto.Name,
                 Phone = userCreateDto.Phone,
                 Address = userCreateDto.Address,
@@ -170,7 +178,6 @@ namespace MyLearning.Controllers
             }
 
             user.UserName = userCreateDto.UserName;
-            user.Password = userCreateDto.UserName;
             user.Name = userCreateDto.Name;
             user.Phone = userCreateDto.Phone;
             user.Address = userCreateDto.Address;

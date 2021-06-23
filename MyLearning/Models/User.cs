@@ -20,6 +20,8 @@ namespace MyLearning.Models
         public string Address { get; set; }
 
         public int Status { get; set; } = 1;
+        
+        public string Salt { get; set; }
 
         public DateTime CreatedAt { get; set; }
 
